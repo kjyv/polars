@@ -2055,3 +2055,50 @@ def test_group_by_forward_backward_fill(
         df.select(expr(cl)),
         df.select(cl.implode().list.eval(expr(pl.element())).reshape((-1,))),
     )
+
+
+def test_drop_nans_in_group_by_agg() -> None:
+    """Test that drop_nans works correctly within group_by aggregations.
+    
+    This is a regression test for issue where drop_nans inside agg() 
+    was not properly filtering NaN values since version 1.35.0.
+    """
+    # Test with different types of NaN values
+    df = pl.DataFrame({
+        "g": [10, 10, 10], 
+        "x": [float("nan"), float("nan"), 0.0]
+    })
+    
+    # Test the aggregation with drop_nans
+    result = df.group_by("g").agg(pl.col("x").drop_nans())
+    
+    # Expected: only the non-NaN value (0.0) should remain
+    expected = pl.DataFrame({
+        "g": [10], 
+        "x": [[0.0]]
+    })
+    
+    assert_frame_equal(result, expected)
+    
+    # Test with numpy NaN as well
+    df_np = pl.DataFrame({
+        "g": [10, 10, 10], 
+        "x": [np.nan, float("nan"), 0.0]
+    })
+    
+    result_np = df_np.group_by("g").agg(pl.col("x").drop_nans())
+    assert_frame_equal(result_np, expected)
+    
+    # Test with multiple groups
+    df_multi = pl.DataFrame({
+        "g": [1, 1, 2, 2, 2], 
+        "x": [float("nan"), 1.0, float("nan"), float("nan"), 2.0]
+    })
+    
+    result_multi = df_multi.group_by("g", maintain_order=True).agg(pl.col("x").drop_nans())
+    expected_multi = pl.DataFrame({
+        "g": [1, 2], 
+        "x": [[1.0], [2.0]]
+    })
+    
+    assert_frame_equal(result_multi, expected_multi)

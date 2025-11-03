@@ -183,3 +183,53 @@ fn test_filter_aggregated_expression() -> PolarsResult<()> {
     );
     Ok(())
 }
+
+#[test]
+fn test_group_by_drop_nans() -> PolarsResult<()> {    
+    let df = df![
+        "g" => [10, 10, 10],
+        "x" => [f64::NAN, f64::NAN, 0.0]
+    ]?;
+
+    let result = df
+        .lazy()
+        .group_by([col("g")])
+        .agg([col("x").drop_nans()])
+        .collect()?;
+
+    // Verify that only the non-NaN value (0.0) remains in the list
+    let x_values = result.column("x")?;
+    let list_values = x_values.list()?;
+    let first_list = list_values.get_as_series(0)?;
+    let float_values: Vec<f64> = first_list.f64()?.into_no_null_iter().collect();
+    
+    assert_eq!(float_values, vec![0.0]);
+    
+    // Test with multiple groups
+    let df_multi = df![
+        "g" => [1, 1, 2, 2, 2],
+        "x" => [f64::NAN, 1.0, f64::NAN, f64::NAN, 2.0]
+    ]?;
+
+    let result_multi = df_multi
+        .lazy()
+        .group_by([col("g")])
+        .agg([col("x").drop_nans()])
+        .sort(["g"], Default::default())
+        .collect()?;
+
+    let x_values_multi = result_multi.column("x")?;
+    let list_values_multi = x_values_multi.list()?;
+    
+    // Check first group
+    let first_group = list_values_multi.get_as_series(0)?;
+    let first_group_values: Vec<f64> = first_group.f64()?.into_no_null_iter().collect();
+    assert_eq!(first_group_values, vec![1.0]);
+    
+    // Check second group
+    let second_group = list_values_multi.get_as_series(1)?;
+    let second_group_values: Vec<f64> = second_group.f64()?.into_no_null_iter().collect();
+    assert_eq!(second_group_values, vec![2.0]);
+
+    Ok(())
+}

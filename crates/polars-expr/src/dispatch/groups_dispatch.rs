@@ -403,14 +403,15 @@ pub fn drop_nans<'a>(
         let values = ac.flat_naive();
         let mut values = values.is_nan().unwrap();
         values.rechunk_mut();
-        values.downcast_as_array().values().clone()
+        let bitmap = values.downcast_as_array().values().clone();
+        // Invert the bitmap: is_nan() returns true for NaN values,
+        // but drop_items expects true for values to KEEP
+        !&bitmap
     } else {
         Bitmap::new_with_value(true, 1)
     };
     drop_items(ac, &predicate)
-}
-
-pub fn drop_nulls<'a>(
+}pub fn drop_nulls<'a>(
     inputs: &[Arc<dyn PhysicalExpr>],
     df: &DataFrame,
     groups: &'a GroupPositions,
